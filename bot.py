@@ -1,105 +1,116 @@
-import os
-import nltk
-import numpy as np
-import tensorflow as tf
+import json
+from difflib import get_close_matches
+from typing import Optional
+import requests
 
-# Suppress TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  
+# Load and save functions for the knowledge base
+def load_knowledge_base(file_path: str) -> dict:
+    try:
+        with open(file_path, 'r') as file:
+            data = json.load(file)
+        # Ensure "coins" key exists in knowledge base
+        if "coins" not in data:
+            data["coins"] = {}
+        return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Initialize with "questions" and "coins" keys if file is missing or corrupt
+        return {"questions": [], "coins": {}}
 
-# Import necessary libraries
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout
+def save_knowledge_base(file_path: str, data: dict):
+    with open(file_path, 'w') as file:
+        json.dump(data, file, indent=2)
 
-# Download necessary NLTK data
-nltk.download('punkt')  # This downloads the correct tokenizer
-nltk.download('stopwords')
+# Similarity matching functions
+def find_best_match(user_question: str, questions: list[str]) -> Optional[str]:
+    matches = get_close_matches(user_question, questions, n=1, cutoff=0.6)
+    return matches[0] if matches else None
 
-# Example small dataset of questions and responses
-dataset = [
-    ("hello", "Hi there! What's your name?"),
-    ("what is your name", "I'm Chatbot! Nice to meet you."),
-    ("how are you", "I'm here to assist you!"),
-    ("tell me a story", "Once upon a time, in a land far away..."),
-    ("give me some news", "Today's top story is about..."),
-    ("what's the weather like", "I'm not a meteorologist, but it's probably nice!"),
-    ("goodbye", "Goodbye! Have a great day!"),
-]
+def get_answer_for_question(question: str, knowledge_base: dict) -> Optional[str]:
+    for q in knowledge_base["questions"]:
+        if q["question"] == question:
+            return q["answer"]
+    return None
 
-# Preprocessing
-stop_words = set(stopwords.words("english"))
+# CoinGecko API functions
+def get_coin_id(coin_name: str) -> Optional[str]:
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/list"
+        response = requests.get(url)
+        response.raise_for_status()
+        coins_data = response.json()
+        # Search by name or symbol (case-insensitive)
+        for coin in coins_data:
+            if coin['name'].lower() == coin_name.lower() or coin['symbol'].lower() == coin_name.lower():
+                return coin['id']
+    except requests.RequestException:
+        print("Bot: Unable to connect to the internet.")
+    return None
 
-def preprocess_text(text):
-    tokens = word_tokenize(text.lower())
-    filtered_tokens = [w for w in tokens if w.isalnum() and w not in stop_words]
-    return " ".join(filtered_tokens)
+def get_coin_data(coin_id: str) -> Optional[dict]:
+    try:
+        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}"
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return None
 
-# Preprocess dataset
-questions, responses = zip(*dataset)
-processed_questions = [preprocess_text(q) for q in questions]
-
-# Tokenize and Pad Sequences
-tokenizer = Tokenizer()
-tokenizer.fit_on_texts(processed_questions)
-vocab_size = len(tokenizer.word_index) + 1
-
-sequences = tokenizer.texts_to_sequences(processed_questions)
-padded_sequences = pad_sequences(sequences, padding='post')
-
-# Convert responses to numeric labels for training
-response_labels = {response: idx for idx, response in enumerate(set(responses))}
-reverse_labels = {idx: response for response, idx in response_labels.items()}
-numeric_responses = [response_labels[r] for r in responses]
-
-# Split dataset
-X_train, X_test, y_train, y_test = train_test_split(padded_sequences, numeric_responses, test_size=0.2, random_state=42)
-
-# Define Model
-model = Sequential([
-    Embedding(vocab_size, 16, input_length=padded_sequences.shape[1]),
-    LSTM(32, return_sequences=True),
-    Dropout(0.2),
-    LSTM(16),
-    Dense(16, activation='relu'),
-    Dense(len(response_labels), activation='softmax')
-])
-
-model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-model.summary()
-
-# Train Model
-model.fit(np.array(X_train), np.array(y_train), epochs=50, batch_size=4, validation_data=(np.array(X_test), np.array(y_test)))
-
-# Chatbot function
-def chatbot_response(user_input):
-    processed_input = preprocess_text(user_input)
-    seq = tokenizer.texts_to_sequences([processed_input])
-    padded = pad_sequences(seq, maxlen=padded_sequences.shape[1], padding='post')
-
-    # Predict response
-    pred = model.predict(padded)
-    response_idx = np.argmax(pred)
-    response = reverse_labels[response_idx]
-    return response
-
-# Chatbot Interaction
-def chat():
-    print("Hello! I'm a simple chatbot. Type 'exit' to end the conversation.")
-    print(chatbot_response("hello"))  # Initial greeting
-    user_name = input("You: ")
-
+# Main chat function with cryptocurrency integration
+def chat_bot():
+    file_path = 'knowledge_base.json'
+    knowledge_base = load_knowledge_base(file_path)
+    
     while True:
-        user_input = input("You: ")
-        if user_input.lower() == "exit":
-            print("Chatbot: Goodbye! Have a great day!")
+        user_input = input('You: ')
+        if user_input.lower() == 'quit':
             break
-        response = chatbot_response(user_input)
-        print(f"Chatbot: {response}")
+        
+        # Check for cryptocurrency question
+        if "price of" in user_input.lower() or "information about" in user_input.lower() or "prediction about" in user_input.lower():
+            coin_name = user_input.split("about")[-1].strip() if "about" in user_input.lower() else user_input.split("price of")[-1].strip()
+            coin_id = get_coin_id(coin_name)
+            latest_data = None
+            
+            # Try to fetch latest data if online
+            if coin_id:
+                latest_data = get_coin_data(coin_id)
+                if latest_data:
+                    price = latest_data['market_data']['current_price']['usd']
+                    market_cap = latest_data['market_data']['market_cap']['usd']
+                    liquidity = latest_data['market_data'].get('total_volume', {}).get('usd', 'N/A')
+                    print(f"Bot: [Updated Data]\nName: {latest_data['name']},\nSymbol: {latest_data['symbol'].upper()},\nCurrent Price: ${price},\nMarket Cap: ${market_cap},\nLiquidity: ${liquidity}")
+                    
+                    # Save latest data to knowledge base
+                    knowledge_base["coins"][coin_name] = {
+                        "name": latest_data['name'],
+                        "symbol": latest_data['symbol'].upper(),
+                        "price": price,
+                        "market_cap": market_cap,
+                        "liquidity": liquidity
+                    }
+                    save_knowledge_base(file_path, knowledge_base)
+            
+            # Fallback to cached data if no updated data available
+            if not latest_data:
+                if coin_name in knowledge_base["coins"]:
+                    cached_data = knowledge_base["coins"][coin_name]
+                    print(f"Bot: [Cached Data]\nName: {cached_data['name']},\nSymbol: {cached_data['symbol']},\nCurrent Price: ${cached_data['price']},\nMarket Cap: ${cached_data['market_cap']},\nLiquidity: ${cached_data.get('liquidity', 'N/A')}")
+                else:
+                    print("Bot: Sorry, I couldn't find that coin in my data and I couldn't fetch it online.")
+        
+        # Default question matching
+        else:
+            best_match = find_best_match(user_input, [q["question"] for q in knowledge_base["questions"]])
+            if best_match:
+                answer = get_answer_for_question(best_match, knowledge_base)
+                print(f'Bot: {answer}')
+            else:
+                print("Bot: I don't know the answer. Can you teach me?")
+                new_answer = input("Type the answer or `Skip` to skip: ")
+                if new_answer.lower() != "skip":
+                    knowledge_base["questions"].append({"question": user_input, "answer": new_answer})
+                    save_knowledge_base(file_path, knowledge_base)
+                    print("Bot: Thank you! I learned a new response!")
 
-# Run the chatbot
-if __name__ == "__main__":
-    chat()
+if __name__ == '__main__':
+    chat_bot()
