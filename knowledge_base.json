@@ -1,0 +1,74 @@
+{
+  "questions": [
+    {
+      "question": "Hello",
+      "answer": "Hello, i am crypto bot you can ask me of about details of any coin How can I help you?"
+    },
+    {
+      "question": "Hello there mate",
+      "answer": "Hello there"
+    },
+    {
+      "question": "fine what about u",
+      "answer": "i am fine how can i help you"
+    }
+  ],
+  "coins": {
+    "bitcoin": {
+      "name": "Bitcoin",
+      "symbol": "BTC",
+      "price": 76107,
+      "market_cap": 1504199390833,
+      "liquidity": 71393418340
+    },
+    "link": {
+      "name": "Chainlink",
+      "symbol": "LINK",
+      "price": 12.48,
+      "market_cap": 7827372121,
+      "liquidity": 652546155
+    },
+    "doge": {
+      "name": "Binance-Peg Dogecoin",
+      "symbol": "DOGE",
+      "price": 0.194469,
+      "market_cap": 361620665,
+      "liquidity": 6372289
+    },
+    "ksm": {
+      "name": "Kusama",
+      "symbol": "KSM",
+      "price": 17.16,
+      "market_cap": 268763799,
+      "liquidity": 22118276
+    },
+    "btc": {
+      "name": "batcat",
+      "symbol": "BTC",
+      "price": 0.00015024,
+      "market_cap": 151782,
+      "liquidity": 17607.47
+    },
+    "eth": {
+      "name": "Bifrost Bridged ETH (Bifrost)",
+      "symbol": "ETH",
+      "price": 2839.06,
+      "market_cap": 0.0,
+      "liquidity": 40770
+    },
+    "luna": {
+      "name": "Luna by Virtuals",
+      "symbol": "LUNA",
+      "price": 0.09715,
+      "market_cap": 97334899,
+      "liquidity": 3741963
+    },
+    "oax": {
+      "name": "OAX",
+      "symbol": "OAX",
+      "price": 0.162996,
+      "market_cap": 9094206,
+      "liquidity": 3343905
+    }
+  }
+}
