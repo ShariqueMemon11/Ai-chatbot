@@ -55,6 +55,32 @@ def get_coin_data(coin_id: str) -> Optional[dict]:
     except requests.RequestException:
         return None
 
+def get_coin_price_history(coin_id: str, days: int = 7) -> Optional[list]:
+    try:
+        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days={days}"
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return data["prices"]
+    except requests.RequestException:
+        return None
+
+def predict_trend(price_history: list) -> str:
+    if len(price_history) < 2:
+        return "Not enough data to make a prediction."
+    
+    # Calculate percentage change from the earliest to the latest price
+    initial_price = price_history[0][1]
+    latest_price = price_history[-1][1]
+    percent_change = ((latest_price - initial_price) / initial_price) * 100
+    
+    if percent_change > 5:
+        return "It looks like the coin might pump soon based on recent trends and analysis."
+    elif percent_change < -5:
+        return "It seems the coin might dump soon based on recent trends."
+    else:
+        return "The coin seems stable, with no significant trend detected."
+
 # Main chat function with cryptocurrency integration
 def chat_bot():
     file_path = 'knowledge_base.json'
@@ -62,11 +88,11 @@ def chat_bot():
     
     while True:
         user_input = input('You: ')
-        if user_input.lower() == 'quit':
+        if user_input.lower() == 'quit' or user_input.lower() == 'byy' or user_input.lower() == 'ok by':
             break
         
         # Check for cryptocurrency question
-        if "price of" in user_input.lower() or "information about" in user_input.lower() or "prediction about" in user_input.lower():
+        if "price of" in user_input.lower() or "information about" in user_input.lower() or "prediction about" in user_input.lower() or "analysis about" in user_input.lower():
             coin_name = user_input.split("about")[-1].strip() if "about" in user_input.lower() else user_input.split("price of")[-1].strip()
             coin_id = get_coin_id(coin_name)
             latest_data = None
@@ -80,13 +106,19 @@ def chat_bot():
                     liquidity = latest_data['market_data'].get('total_volume', {}).get('usd', 'N/A')
                     print(f"Bot: [Updated Data]\nName: {latest_data['name']},\nSymbol: {latest_data['symbol'].upper()},\nCurrent Price: ${price},\nMarket Cap: ${market_cap},\nLiquidity: ${liquidity}")
                     
+                    # Fetch historical data and make a prediction
+                    price_history = get_coin_price_history(coin_id)
+                    prediction = predict_trend(price_history) if price_history else "No prediction available."
+                    print(f"Bot: Prediction - {prediction}")
+                    
                     # Save latest data to knowledge base
                     knowledge_base["coins"][coin_name] = {
                         "name": latest_data['name'],
                         "symbol": latest_data['symbol'].upper(),
                         "price": price,
                         "market_cap": market_cap,
-                        "liquidity": liquidity
+                        "liquidity": liquidity,
+                        "prediction": prediction
                     }
                     save_knowledge_base(file_path, knowledge_base)
             
@@ -95,6 +127,7 @@ def chat_bot():
                 if coin_name in knowledge_base["coins"]:
                     cached_data = knowledge_base["coins"][coin_name]
                     print(f"Bot: [Cached Data]\nName: {cached_data['name']},\nSymbol: {cached_data['symbol']},\nCurrent Price: ${cached_data['price']},\nMarket Cap: ${cached_data['market_cap']},\nLiquidity: ${cached_data.get('liquidity', 'N/A')}")
+                    print(f"Bot: Prediction - {cached_data.get('prediction', 'No prediction available.')}")
                 else:
                     print("Bot: Sorry, I couldn't find that coin in my data and I couldn't fetch it online.")
         
@@ -114,3 +147,4 @@ def chat_bot():
 
 if __name__ == '__main__':
     chat_bot()
+
